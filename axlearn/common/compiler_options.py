@@ -59,6 +59,10 @@ def default_xla_options(
             # further if you see "Allocator failed to allocate". A feature
             # to dynamically allocate may come later: b/380514965
             megascale_grpc_premap_memory_bytes=17179869184,
+            # RapidEye output directory for debugging purposes,
+            megascale_rapid_eye_error_digest_log_path="/output/rapideye/",
+            # enable megascale debug port.
+            megascale_debug_port=8081,
             # Flag controlling the maximum number of overlapping host offloadings.
             xla_tpu_host_transfer_overlap_limit=24,
             # Flag controlling the maximum number of overlapping cross-DCN send/recv.
@@ -163,7 +167,15 @@ def default_xla_options(
             int(v)
             continue
         except ValueError:
-            assert v in [True, False, "true", "false", "megachip_tccontrol", "10m"], (k, v)
+            assert v in [
+                True,
+                False,
+                "true",
+                "false",
+                "megachip_tccontrol",
+                "10m",
+                "/output/rapideye/",
+            ], (k, v)
 
     return options
 
