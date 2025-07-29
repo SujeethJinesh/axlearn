@@ -205,8 +205,7 @@ def _fix_metadata(tspec: dict[str, Any], shard_infos: list[_ShardInfo]):
 
 
 class TensorstoreSpecModifier:
-    def __call__(self, spec: dict[str, Any], *, shard_infos: list[_ShardInfo]):
-        ...
+    def __call__(self, spec: dict[str, Any], *, shard_infos: list[_ShardInfo]): ...
 
 
 async def _async_serialize(
@@ -559,10 +558,19 @@ class GlobalAsyncCheckpointManager(serialization.GlobalAsyncCheckpointManager):
 
         # pylint: disable-next=redefined-outer-name
         async def _run_serializer():
+            logging.info(
+                "******* DEBUG GlobalAsyncCheckpointManager _run_serializer "
+                "with number of commit_futures: %s",
+                len(commit_futures),
+            )
             future_writer = jax.tree.map(
                 serialization.async_serialize, arrays, tensorstore_specs, commit_futures
             )
+            logging.info("******* DEBUG GlobalAsyncCheckpointManager _run_serializer Completed")
             return await asyncio.gather(*future_writer)
+
+        # Is this the problem?
+        logging.info("******* DEBUG Starting to run _run_serializer")
 
         # Note: We need to run the coroutine in another event loop driven by a separate thread.
         # The current event loop might be already running an async function when `serialize` is
@@ -570,9 +578,13 @@ class GlobalAsyncCheckpointManager(serialization.GlobalAsyncCheckpointManager):
         # would not be able to execute another coroutine to completion.
         asyncio.run_coroutine_threadsafe(_run_serializer(), self._loop).result()
 
+        logging.info("******* DEBUG Starting to run _run_serializer")
+
         self._add_futures(
             jax.tree_util.tree_flatten(commit_futures)[0] + (additional_futures or [])
         )
+
+        logging.info("******* DEBUG Starting to run async_commit")
 
         # Used in wait_until_finished to check on process != 0, if the checkpoint
         # has finished writing.

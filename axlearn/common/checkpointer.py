@@ -175,11 +175,14 @@ def async_save_tf_savables(
     When this call returns, `value_map` can be safely mutated, but saving to `dir` will not
     complete unless the returned future is set.
     """
+    logging.info("******* DEBUG Saving TF savables to %s async", dir)
     # pylint: disable-next=consider-using-with
     f = tempfile.TemporaryDirectory()
     for path, value in utils.flatten_items(value_map):
         tf_checkpoint = tf.train.Checkpoint(value)
+        logging.info("******* DEBUG Writing %s to path %s", f.name, path)
         tf_checkpoint.write(os.path.join(f.name, path))
+        logging.info("******* DEBUG Done writing %s to path %s", f.name, path)
     return executor.submit(_upload_dir, f, dst_dir=dir)
 
 
@@ -287,8 +290,7 @@ class StateStorage(Configurable):
 
 
 class IndexFileWriter(Protocol):
-    def __call__(self, ckpt_dir: str, index: Any):
-        ...
+    def __call__(self, ckpt_dir: str, index: Any): ...
 
 
 def write_index_file(*, ckpt_dir: str, index: Any):
@@ -399,6 +401,7 @@ class TensorStoreStateStorage(StateStorage):
         # TODO(markblee): Consider making BoundedDataShardedAsyncCheckpointManager
         # the default once stable.
         if cfg.max_concurrent_gb is not None or cfg.max_data_shard_degree:
+            logging.info("******* DEBUG Using BoundedDataShardedAsyncCheckpointManager")
             self._manager = BoundedDataShardedAsyncCheckpointManager(
                 max_concurrent_gb=cfg.max_concurrent_gb,
                 timeout_secs=cfg.timeout_secs,
@@ -411,6 +414,7 @@ class TensorStoreStateStorage(StateStorage):
                     f"shard_threshold_bytes is set to {cfg.shard_threshold_bytes}, but "
                     "max_data_shard_degree is not set. It will not take any effect."
                 )
+            logging.info("******* DEBUG Using GlobalAsyncCheckpointManager")
             self._manager = GlobalAsyncCheckpointManager(timeout_secs=cfg.timeout_secs)
         if cfg.max_concurrent_restore_gb is not None and cfg.max_concurrent_restore_gb <= 0:
             raise ValueError(
@@ -474,9 +478,11 @@ class TensorStoreStateStorage(StateStorage):
                     spec.shardings.append(
                         jax.sharding.NamedSharding(
                             mesh,
-                            jax.sharding.PartitionSpec()
-                            if value.mesh_axes is None
-                            else value.mesh_axes,
+                            (
+                                jax.sharding.PartitionSpec()
+                                if value.mesh_axes is None
+                                else value.mesh_axes
+                            ),
                         )
                     )
             elif isinstance(value, tf.data.Iterator):
@@ -514,8 +520,12 @@ class TensorStoreStateStorage(StateStorage):
             logging.info("Creating directories: %s", dirs)
             list(self._executor.map(fs.makedirs, dirs))
             logging.info("All directories created")
+
+        logging.info("******* DEBUG starting sync_global_devices")
         # Wait for directory and index creation.
         multihost_utils.sync_global_devices(ckpt_dir)
+        logging.info("******* DEBUG finished sync_global_devices")
+
         # Each worker writes its tf checkpoints under a different path.
         save_tf_future = async_save_tf_savables(
             spec.tf_ckpt_map,
@@ -527,6 +537,7 @@ class TensorStoreStateStorage(StateStorage):
         )
 
         def commit():
+            logging.info("******* DEBUG starting on_commit_callback")
             on_commit_callback(ckpt_dir=ckpt_dir, index=spec.index)
             logging.info(
                 "Serialization of %s completed in %s seconds.",
@@ -536,6 +547,9 @@ class TensorStoreStateStorage(StateStorage):
 
         # Run serialization of GDA values in parallel.
         logging.debug(
+            "array_values=%s tensorstore=%s", utils.shapes(spec.gda_values), spec.tensorstore_specs
+        )
+        logging.info(
             "array_values=%s tensorstore=%s", utils.shapes(spec.gda_values), spec.tensorstore_specs
         )
         self._manager.serialize(
