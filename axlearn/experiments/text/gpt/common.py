@@ -671,8 +671,6 @@ def get_trainer_config_fn(
         A function that returns a trainer config.
     """
 
-    del keep_every_n_steps
-
     def config_fn() -> InstantiableConfig:
         cfg: SpmdTrainer.Config = SpmdTrainer.default_config()
         cfg.name = "gpt_trainer"
@@ -719,7 +717,8 @@ def get_trainer_config_fn(
             n=save_every_n_steps or min(eval_every_n_steps, 5_000), max_step=max_step
         )
         ckpt_config.keep_last_n = 3
-        # ckpt_config.keep_every_n_steps = min(max_step, keep_every_n_steps)
+        ckpt_config.keep_every_n_steps = min(max_step, keep_every_n_steps)
+        ckpt_config.enable_single_replica_ckpt_restoring = True
         cfg.checkpointer = ckpt_config
         ########################################################################
         cfg.summary_writer.write_every_n_steps = min(eval_every_n_steps, 100)
